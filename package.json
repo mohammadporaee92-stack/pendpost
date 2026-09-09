@@ -71,5 +71,8 @@
     "persian:serve": "node --env-file-if-exists=.env scripts/persian-instagram.mjs serve",
     "persian:telegram": "node --env-file-if-exists=.env scripts/persian-instagram.mjs telegram-poll",
     "persian:publish": "node --env-file-if-exists=.env scripts/persian-instagram.mjs publish-approved"
+  },
+  "dependencies": {
+    "sharp": "^0.34.3"
   }
 }
