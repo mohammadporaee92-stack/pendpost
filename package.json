@@ -66,6 +66,13 @@
     "check": "node --check server.mjs && for f in lib/*.mjs lib/drivers/*.mjs scripts/*.mjs bin/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && node scripts/check-encoding.mjs && node test/parity-check.mjs && for t in test/*.test.mjs; do node \"$t\" || exit 1; done",
     "check:fast": "node ops/engine-check.mjs",
     "hooks:install": "node ops/install-hooks.mjs",
-    "publish:docs": "node ops/publish-docs.mjs"
+    "publish:docs": "node ops/publish-docs.mjs",
+    "persian:daily": "node --env-file-if-exists=.env scripts/persian-instagram.mjs daily",
+    "persian:serve": "node --env-file-if-exists=.env scripts/persian-instagram.mjs serve",
+    "persian:telegram": "node --env-file-if-exists=.env scripts/persian-instagram.mjs telegram-poll",
+    "persian:publish": "node --env-file-if-exists=.env scripts/persian-instagram.mjs publish-approved"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
   }
 }
