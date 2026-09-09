@@ -1,5 +1,7 @@
 # pendpost
 
+> Persian Instagram automation for `@mohammad_por_ai`: see the [Windows-first Persian setup guide](docs/PERSIAN-INSTAGRAM-SETUP.fa.md).
+
 **Agent-operated social media with a human approval gate.**
 
 [![CI](https://github.com/pendpost/pendpost/actions/workflows/ci.yml/badge.svg)](https://github.com/pendpost/pendpost/actions/workflows/ci.yml)

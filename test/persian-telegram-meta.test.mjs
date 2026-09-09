@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { TelegramApproval } from '../lib/persian-telegram.mjs'; import { InstagramGraphPublisher } from '../lib/persian-meta.mjs';
+const sent = []; const telegram = new TelegramApproval({ token: 'test-token', chatId: 'chat', allowedUserId: '42', fetchImpl: async (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); return { ok: true, json: async () => ({ ok: true }) }; } });
+const item = { id: 'x', type: 'carousel', status: 'draft', proposedAt: '2026-09-09T18:00', caption: 'متن', hashtags: ['#آموزش'] };
+await telegram.send(item); assert.equal(sent.length, 1); assert.match(sent[0].body.reply_markup.inline_keyboard[0][0].callback_data, /^approve:x:/);
+telegram.apply({ data: `approve:x:${item.telegramNonce}`, from: { id: 42 } }, item, new Date('2026-09-09T12:00:00Z')); assert.equal(item.status, 'approved');
+assert.throws(() => telegram.apply({ data: `approve:x:${item.telegramNonce}`, from: { id: 42 } }, item), /replayed/);
+assert.throws(() => new TelegramApproval({ allowedUserId: '9' }).authenticate({ data: 'approve:x:n', from: { id: 8 } }, item), /forbidden/);
+const calls = []; const responses = [{ id: 'child1' }, { id: 'child2' }, { id: 'container' }, { status_code: 'FINISHED' }, { id: 'ig-post' }];
+const meta = new InstagramGraphPublisher({ token: 'test', igUserId: 'ig', dryRun: false, wait: async () => {}, fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, json: async () => responses.shift() }; } });
+item.publicMediaUrls = ['https://example.test/1.png', 'https://example.test/2.png']; item.publish = { attempts: 0 };
+const result = await meta.publish(item); assert.equal(result.id, 'ig-post'); assert.equal(item.status, 'published'); assert.equal(calls.length, 5);
+const duplicate = await meta.publish({ ...item, status: 'approved' }); assert.equal(duplicate.duplicatePrevented, true); assert.equal(calls.length, 5);
+const dry = await new InstagramGraphPublisher({ dryRun: true }).publish({ status: 'approved', publish: {} }); assert.equal(dry.dryRun, true);
+await assert.rejects(() => new InstagramGraphPublisher({ dryRun: true }).publish({ status: 'draft' }), /approval/);
+console.log('persian Telegram + Meta mocks: ok');

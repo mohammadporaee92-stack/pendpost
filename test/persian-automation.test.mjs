@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { JsonStore, MockPersianProvider, generateDaily, isDuplicateTopic, topicSimilarity } from '../lib/persian-automation.mjs';
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pendpost-fa-')); const store = new JsonStore(root);
+store.saveProfile({ instagramId: 'mohammad_por_ai' });
+const one = await generateDaily({ store, provider: new MockPersianProvider(), now: new Date('2026-09-09T10:00:00Z') });
+const two = await generateDaily({ store, provider: new MockPersianProvider(), now: new Date('2026-09-10T10:00:00Z') });
+assert.equal(one.type, 'carousel'); assert.equal(two.type, 'reel'); assert.equal(store.profile().instagramId, '@mohammad_por_ai');
+assert.ok(topicSimilarity('آموزش ساده هوش مصنوعی', 'آموزش هوش مصنوعی ساده') > .9);
+assert.equal(isDuplicateTopic(one.title, store.items()), true); assert.equal(one.status, 'draft');
+console.log('persian automation core: ok');
