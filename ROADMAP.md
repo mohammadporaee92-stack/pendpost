@@ -9,6 +9,7 @@ This roadmap is aspirational. Everything below is a direction, not a commitment,
 
 ## Near-term (aspirational)
 
+- **Approval-gated Instagram comment replies.** Add comment discovery and owner-approved replies using only the official Meta Instagram Graph API; no scraping, browser automation, passwords, or unofficial APIs.
 - **Richer humanizer rules.** Expand the brand-lint and humanizer rule set in `rules.json`, sharpen the existing matchers, and reduce false positives on the AI-writing tells.
 - **Docs polish.** Improve the docs site, the per-platform setup walkthroughs, and the in-product guidance.
 

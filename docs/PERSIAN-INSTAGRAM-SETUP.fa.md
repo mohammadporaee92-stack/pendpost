@@ -46,7 +46,13 @@ TELEGRAM_APPROVAL_CHAT_ID=<شناسه چت دریافت پیش‌نمایش>
 TELEGRAM_ALLOWED_USER_ID=<شناسه عددی حساب مجاز برای تأیید>
 ```
 
-سپس `node scripts/persian-instagram.mjs daily --notify` پیش‌نمایش‌ها، کپشن، هشتگ، نوع و زمان را همراه دکمه‌های **تأیید، رد و بازتولید** می‌فرستد. callback باید با POST به `http://127.0.0.1:8091/telegram/callback` برسد. چون Telegram به localhost دسترسی ندارد، در نسخه MVP دریافت callback نیازمند یک تونل HTTPS رایگانِ تحت کنترل شما یا forwarder محلی است؛ تا آن زمان دکمه‌ها قابل دریافت نیستند. شناسه کاربر، nonce یک‌بارمصرف و وضعیت مصرف callback جلوی کاربر غیرمجاز، replay و تأیید تکراری را می‌گیرد. رد و بازتولید هرگز منتشر نمی‌کنند.
+سپس `node scripts/persian-instagram.mjs daily --notify` پیش‌نمایش‌ها، کپشن، هشتگ، نوع و زمان را همراه دکمه‌های **تأیید، رد و بازتولید** می‌فرستد. دریافت دکمه‌ها با long polling رسمی `getUpdates` انجام می‌شود؛ بنابراین webhook، دامنه یا tunnel لازم نیست:
+
+```powershell
+npm run persian:telegram
+```
+
+Task Scheduler این worker را هنگام ورود به ویندوز اجرا می‌کند. worker ابتدا webhook قدیمی را با `deleteWebhook` غیرفعال می‌کند و سپس برای هر دکمه `answerCallbackQuery` می‌فرستد تا حالت انتظار Telegram تمام شود. تأیید وضعیت را `approved` می‌کند، رد هیچ انتشار ایجاد نمی‌کند و بازتولید یک پیش‌نویس جایگزین هم‌نوع را تولید و render و دوباره ارسال می‌کند. شناسه کاربر، nonce یک‌بارمصرف و offset ذخیره‌شده جلوی کاربر غیرمجاز، replay و تأیید تکراری را می‌گیرد.
 
 ## ۴. اتصال رسمی Meta (توقفگاه اطلاعات محرمانه)
 
@@ -65,7 +71,18 @@ META_SYSTEM_USER_TOKEN=<long-lived-system-user-token>
 PERSIAN_DRY_RUN=true
 ```
 
-Graph API باید فایل را از URL عمومی HTTPS دریافت کند؛ `localhost` و مسیر فایل محلی قابل استفاده نیست. قبل از انتشار واقعی باید خروجی را روی میزبانی HTTPS تحت کنترل خود قرار دهید و URLها را در `publicMediaUrls` رکورد محلی ثبت کنید. publisher نوع/تعداد URL، ساخت container، polling وضعیت، `media_publish`، خطاهای token/rate-limit و قابلیت retry را مدیریت می‌کند. پس از دریافت `instagramPostId` همان رکورد دوباره منتشر نمی‌شود.
+Graph API باید فایل را از URL عمومی HTTPS دریافت کند؛ `localhost` و مسیر فایل محلی قابل استفاده نیست. امن‌ترین گزینه رایگان پیشنهادی، **Cloudflare R2 free tier در یک bucket اختصاصی** با دامنه عمومی محدود به فایل‌های خروجی و ابزار متن‌باز `rclone` است. secretهای R2 فقط در config محلی rclone می‌مانند. پس از `rclone config` این موارد را در `.env` تنظیم کنید:
+
+```dotenv
+MEDIA_UPLOADER=rclone
+MEDIA_RCLONE_REMOTE=pendpost-r2:public-media
+MEDIA_PUBLIC_BASE_URL=https://media.example.com
+RCLONE_PATH=C:\Program Files\rclone\rclone.exe
+```
+
+میزبانی عمومی ذاتاً فایل را برای هرکس که URL را دارد قابل دریافت می‌کند؛ bucket را فقط برای media انتشار بسازید، directory listing را ببندید و فایل‌های قدیمی را با lifecycle حذف کنید. adapter قابل تعویض است و پیش‌فرض `disabled` باقی می‌ماند.
+
+publisher نوع/تعداد URL، ساخت container، polling وضعیت و `media_publish` را مدیریت می‌کند. خطاهای دائمی مانند token/permission خودکار retry نمی‌شوند؛ خطاهای موقت حداکثر سه بار با backoff نمایی retry می‌شوند. اگر پاسخ `media_publish` به علت قطع شبکه نامعلوم باشد، وضعیت `publish_unknown` می‌شود و **هیچ retry خودکاری انجام نمی‌شود** تا ابتدا در Instagram/Meta تطبیق انسانی انجام شود. پس از ثبت `instagramPostId` همان رکورد دوباره منتشر نمی‌شود.
 
 **فعلاً `PERSIAN_DRY_RUN=true` بماند.** فقط پس از آزمون کامل و تصمیم آگاهانه خودتان آن را `false` کنید. فرمان زیر در حالت پیش‌فرض فقط dry-run است:
 
@@ -86,6 +103,7 @@ Task Scheduler روزانه پیش‌نویس می‌سازد و هر پنج د�
 - `.env` و پوشه داده runtime در Git نادیده گرفته شده‌اند؛ secret را log یا commit نکنید.
 - فرم فقط روی `127.0.0.1` است. آن را مستقیم در اینترنت باز نکنید.
 - منابع پژوهش وب در فیلد `sources` ذخیره می‌شوند؛ مدل نباید آمار یا ادعای بدون منبع بسازد. MVP خودش web research انجام نمی‌دهد.
-- بازتولید در MVP درخواست را ثبت می‌کند؛ اجرای worker بازتولید خودکار و polling داخلی Telegram کار بعدی است.
-- کیفیت RTL و فونت نصب‌شده را پیش از انتشار انسانی بررسی کنید. ریل فعلی انیمیشن ساده و بدون TTS/موسیقی است.
+- حساب Instagram باید Professional (Business یا Creator) و به Facebook Page متصل باشد؛ حساب شخصی با Graph publishing کار نمی‌کند. مجوز `instagram_content_publish` الزامی است و ممکن است برای استفاده خارج از نقش‌های app به App Review نیاز باشد.
+- کیفیت RTL و فونت نصب‌شده را پیش از انتشار انسانی بررسی کنید. ریل فعلی انیمیشن ساده و بدون TTS/موسیقی است؛ کیفیت صدای فارسی Piper یکنواخت نیست و انتخاب/مجوز مدل صوتی بر عهده مالک است.
+- اگر لپ‌تاپ sleep/offline/خاموش باشد long polling، ارسال و انتشار اجرا نمی‌شوند. `StartWhenAvailable` کارهای زمان‌بندی‌شده را پس از بیدارشدن جبران می‌کند، اما worker Telegram پس از logon باید در حال اجرا باشد.
 - مسیر مهاجرت بعدی می‌تواند GitHub Actions یا Cloudflare باشد، ولی هیچ deployment ابری در این تغییر پیاده نشده است.
