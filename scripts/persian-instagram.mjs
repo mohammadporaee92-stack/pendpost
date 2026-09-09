@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
 import path from 'node:path';
-import { JsonStore, MockPersianProvider, OllamaPersianProvider, generateDaily } from '../lib/persian-automation.mjs';
+import { JsonStore, MockPersianProvider, OllamaPersianProvider, generateDaily, isPublishDue } from '../lib/persian-automation.mjs';
 import { renderCarousel, renderReel } from '../lib/persian-render.mjs';
 import { TelegramApproval, runTelegramPolling } from '../lib/persian-telegram.mjs';
 import { InstagramGraphPublisher } from '../lib/persian-meta.mjs';
@@ -11,7 +11,7 @@ import { handleApprovalCallback } from '../lib/persian-workflow.mjs';
 
 const store = new JsonStore(); const command = process.argv[2] || 'help'; const outputRoot = path.join(store.root, 'output');
 const provider = () => process.env.PERSIAN_AI_PROVIDER === 'ollama' ? new OllamaPersianProvider() : new MockPersianProvider();
-const render = (item) => { item.previewFiles = item.type === 'carousel' ? renderCarousel(item, store.profile(), outputRoot) : [renderReel(item, store.profile(), outputRoot)]; store.saveItem(item); return item; };
+const render = async (item) => { try { item.previewFiles = item.type === 'carousel' ? await renderCarousel(item, store.profile(), outputRoot) : [await renderReel(item, store.profile(), outputRoot)]; } catch (error) { item.status = 'render_failed'; item.renderError = { message: error.message, at: new Date().toISOString() }; store.saveItem(item); throw error; } store.saveItem(item); return item; };
 const generateAndRender = async (options = {}) => render(await generateDaily({ store, provider: provider(), ...options }));
 const fields = [['pageName', 'نام صفحه'], ['instagramId', 'شناسه اینستاگرام'], ['topic', 'موضوع صفحه'], ['targetAudience', 'مخاطبان هدف'], ['tone', 'لحن'], ['pillars', 'ستون‌های محتوا'], ['brandColors', 'رنگ‌های برند'], ['font', 'فونت'], ['logoPath', 'مسیر لوگو یا تصویر پروفایل'], ['postingFrequency', 'تعداد انتشار'], ['preferredTime', 'زمان انتشار'], ['ctaPreferences', 'ترجیحات دعوت به اقدام'], ['hashtagRules', 'قواعد هشتگ'], ['forbiddenTopics', 'موضوعات ممنوع']];
 const textareas = new Set(['topic', 'targetAudience', 'pillars', 'ctaPreferences', 'hashtagRules', 'forbiddenTopics']);
@@ -23,7 +23,7 @@ if (command === 'daily') {
   const telegram = new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }); const offset = store.read('telegram-offset', 0); const once = process.argv.includes('--once');
   try { await runTelegramPolling({ telegram, offset, once, persistOffset: (next) => store.write('telegram-offset', next), onCallback: (callback) => handleApprovalCallback({ callback, telegram, store, provider: provider(), render }) }); } catch (error) { console.error(`Telegram polling: ${error.message}`); process.exitCode = 1; }
 } else if (command === 'publish-approved') {
-  const publisher = new InstagramGraphPublisher({ persistItem: (changed) => store.saveItem(changed) }); const uploader = configuredMediaUploader(); const candidates = store.items().filter((item) => item.status === 'approved' || (item.status === 'publish_failed' && item.publish?.error?.retryable && (item.publish?.attempts || 0) < publisher.maxAttempts && (!item.publish.nextRetryAt || Date.parse(item.publish.nextRetryAt) <= Date.now())));
+  const publisher = new InstagramGraphPublisher({ persistItem: (changed) => store.saveItem(changed) }); const uploader = configuredMediaUploader(); const now = new Date(); const candidates = store.items().filter((item) => isPublishDue(item, now, publisher.maxAttempts));
   for (const item of candidates) { try { if (!publisher.dryRun && !item.publicMediaUrls?.length) { item.publicMediaUrls = await uploader.upload(item.previewFiles, item.id); store.saveItem(item); } const result = await publisher.publish(item); store.saveItem(item); console.log(JSON.stringify({ id: item.id, ...result })); } catch (error) { store.saveItem(item); console.error(JSON.stringify({ id: item.id, error: error.message, retryable: item.publish?.error?.retryable, ambiguous: item.publish?.ambiguous })); } }
 } else if (command === 'serve') {
   const port = Number(process.env.PERSIAN_PORT || 8091); const server = http.createServer(async (req, res) => { if (req.method !== 'POST') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html(store.profile())); return; } try { const form = new URLSearchParams(await readLimitedBody(req)); const profile = Object.fromEntries(form); for (const key of ['targetAudience', 'pillars', 'brandColors', 'forbiddenTopics']) profile[key] = String(profile[key] || '').split(/[،,]/).map((value) => value.trim()).filter(Boolean); store.saveProfile(profile); res.end(html(store.profile(), 'تنظیمات ذخیره شد.')); } catch (error) { res.writeHead(error.statusCode || 400, { 'content-type': 'text/html; charset=utf-8' }); res.end(error.statusCode === 413 ? 'request_too_large' : html(store.profile(), `خطا: ${error.message}`)); } }); server.listen(port, '127.0.0.1', () => console.log(`Persian onboarding: http://127.0.0.1:${port}`));
