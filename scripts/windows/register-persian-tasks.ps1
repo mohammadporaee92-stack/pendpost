@@ -4,7 +4,7 @@ $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $Script = Join-Path $Root "scripts\persian-instagram.mjs"
 $Node = (Get-Command node -ErrorAction Stop).Source
 if (-not [IO.Path]::IsPathRooted($Node)) { throw "Could not resolve an absolute node.exe path." }
-$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
+$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 $DailyAction = New-ScheduledTaskAction -Execute $Node -Argument "--env-file-if-exists=.env `"$Script`" daily --notify" -WorkingDirectory $Root
 $DailyTrigger = New-ScheduledTaskTrigger -Daily -At $GenerationTime
 Register-ScheduledTask -TaskName "Pendpost Persian Daily Generation" -Action $DailyAction -Trigger $DailyTrigger -Settings $Settings -Description "Generate and send one Persian Instagram draft for approval" -Force
