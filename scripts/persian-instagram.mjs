@@ -19,8 +19,14 @@ const html = (profile, message = '') => `<!doctype html><html lang="fa" dir="rtl
 
 if (command === 'daily') {
   try {
-    const item = await generateAndRender(); if (process.argv.includes('--notify')) { await new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }).send(item); store.saveItem(item); } console.log(JSON.stringify({ id: item.id, type: item.type, status: item.status, proposedAt: item.proposedAt, previews: item.previewFiles, notified: process.argv.includes('--notify') }, null, 2));
-  } catch (error) { console.error(`Persian daily: ${error.message}`); process.exitCode = 1; }
+    const item = await generateAndRender(); const notificationRequested = process.argv.includes('--notify'); let notified = false; let notificationError;
+    if (notificationRequested) {
+      try { await new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }).send(item); store.saveItem(item); notified = true; }
+      catch (error) { notificationError = error; process.exitCode = 1; }
+    }
+    console.log(JSON.stringify({ id: item.id, type: item.type, status: item.status, proposedAt: item.proposedAt, previews: item.previewFiles, notificationRequested, notified }, null, 2));
+    if (notificationError) console.error(`Persian daily notification: ${notificationError.message}`);
+  } catch (error) { console.error(`Persian daily generation: ${error.message}`); process.exitCode = 1; }
 } else if (command === 'telegram-poll') {
   const telegram = new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }); const offset = store.read('telegram-offset', 0); const once = process.argv.includes('--once');
   try { await runTelegramPolling({ telegram, offset, once, persistOffset: (next) => store.write('telegram-offset', next), onCallback: (callback) => handleApprovalCallback({ callback, telegram, store, provider: provider(), render }) }); } catch (error) { console.error(`Telegram polling: ${error.message}`); process.exitCode = 1; }
