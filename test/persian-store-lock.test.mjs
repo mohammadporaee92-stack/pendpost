@@ -109,5 +109,36 @@ await Promise.all(reclaimers);
 assert.equal(fs.existsSync(criticalGuard), false);
 assert.equal(fs.existsSync(reclaimLock), false);
 
-for (const temporaryRoot of [root, legacyRoot, publicationRoot, reclaimRoot]) fs.rmSync(temporaryRoot, { recursive: true, force: true });
-console.log('persian JSON store atomic publication, legacy migration, stale recovery, and ownership races: ok');
+const epermRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pendpost-windows-eperm-'));
+const epermStore = new JsonStore(epermRoot, { staleLockMs: 1, lockTimeoutMs: 1000 });
+const epermLock = `${epermStore.file('content')}.lock`;
+fs.mkdirSync(epermLock);
+fs.writeFileSync(path.join(epermLock, 'owner-stale'), 'stale');
+fs.utimesSync(path.join(epermLock, 'owner-stale'), new Date(0), new Date(0));
+const originalReaddirSync = fs.readdirSync;
+let injectedEperm = false;
+fs.readdirSync = (target, ...args) => {
+  if (target === epermLock && !injectedEperm) {
+    injectedEperm = true;
+    throw Object.assign(new Error('simulated Windows sharing violation'), { code: 'EPERM' });
+  }
+  return originalReaddirSync(target, ...args);
+};
+try { epermStore.saveItem({ id: 'after-transient-eperm' }); } finally { fs.readdirSync = originalReaddirSync; }
+assert.equal(injectedEperm, true);
+assert.ok(epermStore.items().some((item) => item.id === 'after-transient-eperm'));
+assert.equal(fs.existsSync(epermLock), false);
+
+const persistentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pendpost-windows-eperm-timeout-'));
+const persistentStore = new JsonStore(persistentRoot, { staleLockMs: 1, lockTimeoutMs: 40 });
+const persistentLock = `${persistentStore.file('content')}.lock`;
+fs.mkdirSync(persistentLock);
+fs.writeFileSync(path.join(persistentLock, 'owner-stale'), 'stale');
+fs.readdirSync = (target, ...args) => {
+  if (target === persistentLock) throw Object.assign(new Error('persistent Windows sharing violation'), { code: 'EPERM' });
+  return originalReaddirSync(target, ...args);
+};
+try { assert.throws(() => persistentStore.saveItem({ id: 'must-time-out' }), /store_lock_timeout/); } finally { fs.readdirSync = originalReaddirSync; }
+
+for (const temporaryRoot of [root, legacyRoot, publicationRoot, reclaimRoot, epermRoot, persistentRoot]) fs.rmSync(temporaryRoot, { recursive: true, force: true });
+console.log('persian JSON store atomic publication, legacy migration, stale recovery, ownership races, and Windows EPERM retry: ok');
