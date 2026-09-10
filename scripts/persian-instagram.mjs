@@ -18,7 +18,18 @@ const textareas = new Set(['topic', 'targetAudience', 'pillars', 'ctaPreferences
 const html = (profile, message = '') => `<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>راه‌اندازی محتوای فارسی Pendpost</title><style>body{font-family:Tahoma,sans-serif;background:#111827;color:#f7f7f2;margin:auto;max-width:820px;padding:32px}form{display:grid;gap:16px;background:#1f2937;padding:24px;border-radius:20px}label{display:grid;gap:6px}input,textarea{font:inherit;padding:12px;border-radius:9px;border:1px solid #475569;background:#f8fafc;color:#111827}button{padding:14px;background:#14b8a6;border:0;border-radius:9px;font-weight:bold}.ok{color:#5eead4}.error{color:#fca5a5}</style><h1>راه‌اندازی صفحه فارسی</h1><p>همه اطلاعات روی همین لپ‌تاپ ذخیره می‌شود.</p><p class="${message.startsWith('خطا') ? 'error' : 'ok'}">${escapeHtml(message)}</p><form method="post">${fields.map(([key, label]) => { const value = escapeHtml(Array.isArray(profile[key]) ? profile[key].join('، ') : profile[key]); return textareas.has(key) ? `<label>${label}<textarea name="${key}" maxlength="5000">${value}</textarea></label>` : `<label>${label}<input name="${key}" maxlength="5000" value="${value}"></label>`; }).join('')}<button>ذخیره تنظیمات</button></form></html>`;
 
 if (command === 'daily') {
-  const item = await generateAndRender(); if (process.argv.includes('--notify')) { await new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }).send(item); store.saveItem(item); } console.log(JSON.stringify({ id: item.id, type: item.type, status: item.status, proposedAt: item.proposedAt, previews: item.previewFiles, notified: process.argv.includes('--notify') }, null, 2));
+  try {
+    const item = await generateAndRender(); const notificationRequested = process.argv.includes('--notify'); let notified = false; let notificationError; let notificationPersistenceError;
+    if (notificationRequested) {
+      try {
+        await new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }).send(item); notified = true;
+        try { store.saveItem(item); } catch (error) { notificationPersistenceError = error; process.exitCode = 1; }
+      } catch (error) { notificationError = error; process.exitCode = 1; }
+    }
+    console.log(JSON.stringify({ id: item.id, type: item.type, status: item.status, proposedAt: item.proposedAt, previews: item.previewFiles, notificationRequested, notified }, null, 2));
+    if (notificationError) console.error(`Persian daily notification: ${notificationError.message}`);
+    if (notificationPersistenceError) console.error(`Persian daily notification metadata: ${notificationPersistenceError.message}`);
+  } catch (error) { console.error(`Persian daily generation: ${error.message}`); process.exitCode = 1; }
 } else if (command === 'telegram-poll') {
   const telegram = new TelegramApproval({ persistItem: (changed) => store.saveItem(changed) }); const offset = store.read('telegram-offset', 0); const once = process.argv.includes('--once');
   try { await runTelegramPolling({ telegram, offset, once, persistOffset: (next) => store.write('telegram-offset', next), onCallback: (callback) => handleApprovalCallback({ callback, telegram, store, provider: provider(), render }) }); } catch (error) { console.error(`Telegram polling: ${error.message}`); process.exitCode = 1; }
